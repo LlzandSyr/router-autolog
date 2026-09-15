@@ -105,7 +105,7 @@ async def get_waf_cookies_with_playwright(account_name: str, login_url: str, req
 				for cookie in cookies:
 					cookie_name = cookie.get('name')
 					cookie_value = cookie.get('value')
-					if cookie_name in required_cookies and cookie_value is not None:
+					if cookie_name and cookie_value is not None:
 						waf_cookies[cookie_name] = cookie_value
 
 				print(f'[INFO] {account_name}: Got {len(waf_cookies)} WAF cookies')
