@@ -126,18 +126,15 @@ async def get_waf_cookies_with_playwright(
 								if body.strip().startswith('{'):
 									break
 						if body.strip().startswith('{'):
-							print(f'[DEBUG] {account_name}: browser API response: {body[:400]}')
 							try:
-								browser_api_results[warm_url] = json.loads(body)
+								parsed = json.loads(body)
 							except Exception:
-								pass
+								parsed = None
+							if parsed and parsed.get('success'):
+								print(f'[DEBUG] {account_name}: browser API response: {body[:400]}')
+								browser_api_results[warm_url] = parsed
 						else:
-							print(f'[DEBUG] {account_name}: warmup {warm_url} non-json body: {str(body)[:1500]}')
-							try:
-								html = await page.content()
-								print(f'[DEBUG] {account_name}: verification page html: {html[:1500]}')
-							except Exception:
-								pass
+							print(f'[DEBUG] {account_name}: warmup {warm_url} non-json body: {str(body)[:200]}')
 					except Exception as warm_err:
 						print(f'[DEBUG] {account_name}: warmup {warm_url} error: {str(warm_err)[:80]}')
 
