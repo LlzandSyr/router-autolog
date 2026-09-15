@@ -65,7 +65,9 @@ def parse_cookies(cookies_data):
 	return {}
 
 
-async def get_waf_cookies_with_playwright(account_name: str, login_url: str, required_cookies: list[str], warmup_urls: list[str] | None = None):
+async def get_waf_cookies_with_playwright(
+	account_name: str, login_url: str, required_cookies: list[str], warmup_urls: list[str] | None = None, user_cookies: dict | None = None
+) -> tuple[dict, dict]:
 	"""使用 Playwright 获取 WAF cookies（隐私模式）"""
 	print(f'[PROCESSING] {account_name}: Starting browser to get WAF cookies...')
 
@@ -89,6 +91,9 @@ async def get_waf_cookies_with_playwright(account_name: str, login_url: str, req
 
 			page = await context.new_page()
 
+			for name, value in (user_cookies or {}).items():
+				await context.add_cookies([{'name': name, 'value': value, 'domain': login_url.split('/')[2], 'path': '/'}])
+
 			try:
 				print(f'[PROCESSING] {account_name}: Access login page to get initial cookies...')
 
@@ -99,13 +104,26 @@ async def get_waf_cookies_with_playwright(account_name: str, login_url: str, req
 				except Exception:
 					await page.wait_for_timeout(3000)
 
+				browser_api_results: dict = {}
 				for warm_url in (warmup_urls or []):
 					try:
-						await page.goto(warm_url, wait_until='networkidle')
-						await page.wait_for_timeout(2000)
-						body = await page.evaluate('document.body ? document.body.innerText : ""')
-						if body and body.strip().startswith('{'):
-							print(f'[DEBUG] {account_name}: browser API response: {body[:600]}')
+						await page.goto(warm_url, wait_until='domcontentloaded')
+						body = ''
+						for _ in range(8):
+							await page.wait_for_timeout(2500)
+							body = await page.evaluate('document.body ? document.body.innerText : ""') or ''
+							if body.strip().startswith('{'):
+								break
+							try:
+								await page.reload(wait_until='domcontentloaded')
+							except Exception:
+								pass
+						if body.strip().startswith('{'):
+							print(f'[DEBUG] {account_name}: browser API response: {body[:400]}')
+							try:
+								browser_api_results[warm_url] = json.loads(body)
+							except Exception:
+								pass
 						else:
 							print(f'[DEBUG] {account_name}: warmup {warm_url} non-json body: {str(body)[:120]}')
 					except Exception as warm_err:
@@ -128,18 +146,18 @@ async def get_waf_cookies_with_playwright(account_name: str, login_url: str, req
 				if missing_cookies:
 					print(f'[FAILED] {account_name}: Missing WAF cookies: {missing_cookies}')
 					await context.close()
-					return None
+					return {}, {}
 
 				print(f'[SUCCESS] {account_name}: Successfully got all WAF cookies')
 
 				await context.close()
 
-				return waf_cookies
+				return waf_cookies, browser_api_results
 
 			except Exception as e:
 				print(f'[FAILED] {account_name}: Error occurred while getting WAF cookies: {e}')
 				await context.close()
-				return None
+				return {}, {}
 
 
 def get_user_info(client, headers, user_info_url: str):
@@ -169,23 +187,25 @@ def get_user_info(client, headers, user_info_url: str):
 		return {'success': False, 'error': f'Failed to get user info: {str(e)[:50]}... {debug}'}
 
 
-async def prepare_cookies(account_name: str, provider_config, user_cookies: dict) -> dict | None:
-	"""准备请求所需的 cookies（可能包含 WAF cookies）"""
-	waf_cookies = {}
+async def prepare_cookies(account_name: str, provider_config, user_cookies: dict) -> tuple[dict | None, dict]:
+	"""准备请求所需的 cookies（可能包含 WAF cookies），并通过浏览器预热 API 路径"""
+	browser_api_results: dict = {}
 
 	if provider_config.needs_waf_cookies():
 		login_url = f'{provider_config.domain}{provider_config.login_path}'
 		warmup_urls = [f'{provider_config.domain}{provider_config.user_info_path}']
 		if provider_config.sign_in_path:
 			warmup_urls.append(f'{provider_config.domain}{provider_config.sign_in_path}')
-		waf_cookies = await get_waf_cookies_with_playwright(account_name, login_url, provider_config.waf_cookie_names, warmup_urls)
+		waf_cookies, browser_api_results = await get_waf_cookies_with_playwright(
+			account_name, login_url, provider_config.waf_cookie_names, warmup_urls, user_cookies
+		)
 		if not waf_cookies:
 			print(f'[FAILED] {account_name}: Unable to get WAF cookies')
-			return None
+			return None, browser_api_results
 	else:
 		print(f'[INFO] {account_name}: Bypass WAF not required, using user cookies directly')
 
-	return {**waf_cookies, **user_cookies}
+	return {**waf_cookies, **user_cookies}, browser_api_results
 
 
 def execute_check_in(client, account_name: str, provider_config, headers: dict):
@@ -294,7 +314,7 @@ async def check_in_account(account: AccountConfig, account_index: int, app_confi
 		print(f'[FAILED] {account_name}: Invalid configuration format')
 		return False, None
 
-	all_cookies = await prepare_cookies(account_name, provider_config, user_cookies)
+	all_cookies, browser_api_results = await prepare_cookies(account_name, provider_config, user_cookies)
 	if not all_cookies:
 		return False, None
 
@@ -318,11 +338,33 @@ async def check_in_account(account: AccountConfig, account_index: int, app_confi
 		}
 
 		user_info_url = f'{provider_config.domain}{provider_config.user_info_path}'
-		user_info_before = get_user_info(client, headers, user_info_url)
+
+		browser_user_info = None
+		raw = browser_api_results.get(user_info_url)
+		if raw and raw.get('success'):
+			ud = raw.get('data') or {}
+			bq = round(ud.get('quota', 0) / 500000, 2)
+			bu = round(ud.get('used_quota', 0) / 500000, 2)
+			browser_user_info = {
+				'success': True,
+				'quota': bq,
+				'used_quota': bu,
+				'display': f':money: Current balance: ${bq}, Used: ${bu}',
+			}
+
+		if browser_user_info:
+			user_info_before = browser_user_info
+		else:
+			user_info_before = get_user_info(client, headers, user_info_url)
 		if user_info_before and user_info_before.get('success'):
 			print(user_info_before['display'])
 		elif user_info_before:
 			print(user_info_before.get('error', 'Unknown error'))
+
+		if browser_user_info and not provider_config.needs_manual_check_in():
+			# browser query already triggered the auto check-in on the server side
+			print(f'[INFO] {account_name}: Check-in completed automatically (via browser)')
+			return True, user_info_before, user_info_before
 
 		if provider_config.needs_manual_check_in():
 			success = execute_check_in(client, account_name, provider_config, headers)
