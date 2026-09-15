@@ -1,7 +1,7 @@
 name: AnyRouter 自动签到
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 23 * * *'
   workflow_dispatch:
 
 jobs:
@@ -69,14 +69,25 @@ jobs:
         restore-keys: |
           balance-hash-
 
-    - name: 随机延迟（仅定时触发，避免固定时刻行为特征）
+    - name: 随机延迟至 07:00-08:30 窗口内（仅定时触发）
       if: github.event_name == 'schedule'
+      shell: python
       run: |
-        $delay = Get-Random -Minimum 600 -Maximum 16200
-        echo "Random delay: $delay seconds ($([math]::Round($delay/60,1)) minutes)"
-        Start-Sleep -Seconds $delay
+        import datetime
+        import random
+        import time
+        cst = datetime.timezone(datetime.timedelta(hours=8))
+        now = datetime.datetime.now(cst)
+        window_end = now.replace(hour=8, minute=30, second=0, microsecond=0)
+        if now >= window_end:
+          print('Already past 08:30 CST, running immediately')
+        else:
+          delay = random.uniform(0, (window_end - now).total_seconds())
+          target = now + datetime.timedelta(seconds=delay)
+          print(f'Waiting {int(delay)}s, will run at {target:%H:%M:%S} CST')
+          time.sleep(delay)
 
-    - name: 执行签到
+    - name: 执行签到（失败半小时后重试一次）
       env:
         ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
         PROVIDERS: ${{ secrets.PROVIDERS }}
@@ -99,6 +110,12 @@ jobs:
         BARK_SERVER: ${{ secrets.BARK_SERVER }}
       run: |
         uv run checkin.py
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host 'First attempt failed, waiting 30 minutes before retrying...'
+          Start-Sleep -Seconds 1800
+          uv run checkin.py
+          exit $LASTEXITCODE
+        }
 
     - name: 执行结果
       if: always()
