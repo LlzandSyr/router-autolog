@@ -10,7 +10,7 @@ import os
 import sys
 from datetime import datetime
 
-import httpx
+from curl_cffi import requests as curl_requests
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
@@ -293,7 +293,7 @@ async def check_in_account(account: AccountConfig, account_index: int, app_confi
 	if not all_cookies:
 		return False, None
 
-	client = httpx.Client(http2=True, timeout=30.0)
+	client = curl_requests.Session(impersonate='chrome', timeout=30.0)
 
 	try:
 		client.cookies.update(all_cookies)
