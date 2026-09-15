@@ -65,7 +65,7 @@ def parse_cookies(cookies_data):
 	return {}
 
 
-async def get_waf_cookies_with_playwright(account_name: str, login_url: str, required_cookies: list[str]):
+async def get_waf_cookies_with_playwright(account_name: str, login_url: str, required_cookies: list[str], warmup_urls: list[str] | None = None):
 	"""使用 Playwright 获取 WAF cookies（隐私模式）"""
 	print(f'[PROCESSING] {account_name}: Starting browser to get WAF cookies...')
 
@@ -99,6 +99,13 @@ async def get_waf_cookies_with_playwright(account_name: str, login_url: str, req
 				except Exception:
 					await page.wait_for_timeout(3000)
 
+				for warm_url in (warmup_urls or []):
+					try:
+						await page.goto(warm_url, wait_until='networkidle')
+						await page.wait_for_timeout(2000)
+					except Exception as warm_err:
+						print(f'[DEBUG] {account_name}: warmup {warm_url} error: {str(warm_err)[:80]}')
+
 				cookies = await page.context.cookies()
 
 				waf_cookies = {}
@@ -109,6 +116,7 @@ async def get_waf_cookies_with_playwright(account_name: str, login_url: str, req
 						waf_cookies[cookie_name] = cookie_value
 
 				print(f'[INFO] {account_name}: Got {len(waf_cookies)} WAF cookies')
+				print(f'[DEBUG] {account_name}: browser cookie names: {sorted(waf_cookies.keys())}')
 
 				missing_cookies = [c for c in required_cookies if c not in waf_cookies]
 
@@ -162,7 +170,10 @@ async def prepare_cookies(account_name: str, provider_config, user_cookies: dict
 
 	if provider_config.needs_waf_cookies():
 		login_url = f'{provider_config.domain}{provider_config.login_path}'
-		waf_cookies = await get_waf_cookies_with_playwright(account_name, login_url, provider_config.waf_cookie_names)
+		warmup_urls = [f'{provider_config.domain}{provider_config.user_info_path}']
+		if provider_config.sign_in_path:
+			warmup_urls.append(f'{provider_config.domain}{provider_config.sign_in_path}')
+		waf_cookies = await get_waf_cookies_with_playwright(account_name, login_url, provider_config.waf_cookie_names, warmup_urls)
 		if not waf_cookies:
 			print(f'[FAILED] {account_name}: Unable to get WAF cookies')
 			return None
