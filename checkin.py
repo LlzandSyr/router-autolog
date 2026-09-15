@@ -132,7 +132,12 @@ async def get_waf_cookies_with_playwright(
 							except Exception:
 								pass
 						else:
-							print(f'[DEBUG] {account_name}: warmup {warm_url} non-json body: {str(body)[:120]}')
+							print(f'[DEBUG] {account_name}: warmup {warm_url} non-json body: {str(body)[:1500]}')
+							try:
+								html = await page.content()
+								print(f'[DEBUG] {account_name}: verification page html: {html[:1500]}')
+							except Exception:
+								pass
 					except Exception as warm_err:
 						print(f'[DEBUG] {account_name}: warmup {warm_url} error: {str(warm_err)[:80]}')
 
