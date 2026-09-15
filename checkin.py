@@ -148,7 +148,12 @@ def get_user_info(client, headers, user_info_url: str):
 				}
 		return {'success': False, 'error': f'Failed to get user info: HTTP {response.status_code}'}
 	except Exception as e:
-		return {'success': False, 'error': f'Failed to get user info: {str(e)[:50]}...'}
+		debug = ''
+		try:
+			debug = f'HTTP {response.status_code} ct={response.headers.get("content-type", "?")} body={response.text[:300]!r}'
+		except Exception:
+			pass
+		return {'success': False, 'error': f'Failed to get user info: {str(e)[:50]}... {debug}'}
 
 
 async def prepare_cookies(account_name: str, provider_config, user_cookies: dict) -> dict | None:
