@@ -1,7 +1,7 @@
 name: AnyRouter 自动签到
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 jobs:
@@ -68,6 +68,13 @@ jobs:
         key: balance-hash-${{ github.sha }}
         restore-keys: |
           balance-hash-
+
+    - name: 随机延迟（仅定时触发，避免固定时刻行为特征）
+      if: github.event_name == 'schedule'
+      run: |
+        $delay = Get-Random -Minimum 600 -Maximum 16200
+        echo "Random delay: $delay seconds ($([math]::Round($delay/60,1)) minutes)"
+        Start-Sleep -Seconds $delay
 
     - name: 执行签到
       env:
