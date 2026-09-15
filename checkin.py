@@ -107,17 +107,24 @@ async def get_waf_cookies_with_playwright(
 				browser_api_results: dict = {}
 				for warm_url in (warmup_urls or []):
 					try:
-						await page.goto(warm_url, wait_until='domcontentloaded')
 						body = ''
-						for _ in range(8):
-							await page.wait_for_timeout(2500)
-							body = await page.evaluate('document.body ? document.body.innerText : ""') or ''
+						# first: fetch from within the already-verified page context
+						for _ in range(3):
+							body = await page.evaluate(
+								'async (u) => { const r = await fetch(u, {credentials: "include"}); return await r.text(); }',
+								warm_url,
+							) or ''
 							if body.strip().startswith('{'):
 								break
-							try:
-								await page.reload(wait_until='domcontentloaded')
-							except Exception:
-								pass
+							await page.wait_for_timeout(3000)
+						# fallback: navigate and wait for the verification page to resolve on its own
+						if not body.strip().startswith('{'):
+							await page.goto(warm_url, wait_until='domcontentloaded')
+							for _ in range(6):
+								await page.wait_for_timeout(3000)
+								body = await page.evaluate('document.body ? document.body.innerText : ""') or ''
+								if body.strip().startswith('{'):
+									break
 						if body.strip().startswith('{'):
 							print(f'[DEBUG] {account_name}: browser API response: {body[:400]}')
 							try:
