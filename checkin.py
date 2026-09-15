@@ -103,6 +103,11 @@ async def get_waf_cookies_with_playwright(account_name: str, login_url: str, req
 					try:
 						await page.goto(warm_url, wait_until='networkidle')
 						await page.wait_for_timeout(2000)
+						body = await page.evaluate('document.body ? document.body.innerText : ""')
+						if body and body.strip().startswith('{'):
+							print(f'[DEBUG] {account_name}: browser API response: {body[:600]}')
+						else:
+							print(f'[DEBUG] {account_name}: warmup {warm_url} non-json body: {str(body)[:120]}')
 					except Exception as warm_err:
 						print(f'[DEBUG] {account_name}: warmup {warm_url} error: {str(warm_err)[:80]}')
 
