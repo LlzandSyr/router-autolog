@@ -406,6 +406,14 @@ async def main():
 		print('[FAILED] Unable to load account configuration, program exits')
 		sys.exit(1)
 
+	only = os.getenv('ONLY_ACCOUNT', '').strip()
+	if only:
+		accounts = [a for a in accounts if a.api_user == only]
+		print(f'[INFO] ONLY_ACCOUNT filter: api_user={only} matched {len(accounts)} account(s)')
+		if not accounts:
+			print(f'[FAILED] No account matches ONLY_ACCOUNT={only}, program exits')
+			sys.exit(1)
+
 	print(f'[INFO] Found {len(accounts)} account configurations')
 
 	last_balance_hash = load_balance_hash()
