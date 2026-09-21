@@ -78,6 +78,7 @@ jobs:
       env:
         PYTHONIOENCODING: utf-8
         ONLY_ACCOUNT: '223103'
+        SCHEDULE_SLOT: ${{ github.event.schedule }}
         ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
         PROVIDERS: ${{ secrets.PROVIDERS }}
         DINGDING_WEBHOOK: ${{ secrets.DINGDING_WEBHOOK }}
@@ -98,6 +99,24 @@ jobs:
         BARK_KEY: ${{ secrets.BARK_KEY }}
         BARK_SERVER: ${{ secrets.BARK_SERVER }}
       run: |
+        # 站点每日签到按 UTC 午夜重置(约北京 8:00)。凌晨槽位的 run 先挂机到 UTC 00:45(重置后)再签，
+        # 实现“北京 8:45 前签完、早上醒来即见”。等待上限 5h45m 防止撞 6h job 硬限；若调度延迟不足
+        # 导致醒来仍在旧 UTC 日，本次会假成功，由 12:00 CST 兜底 run 补签。兜底/手动触发不等待。
+        if ($env:SCHEDULE_SLOT -eq '0 17 * * *' -or $env:SCHEDULE_SLOT -eq '5 17 * * *') {
+          $now = [DateTimeOffset]::UtcNow
+          $target = $now.Date.AddMinutes(45)
+          if ($target -le $now) { $target = $target.AddDays(1) }
+          $wait = [int]($target - $now).TotalSeconds
+          $cap = 5*3600 + 45*60
+          if ($wait -gt 0) {
+            if ($wait -gt $cap) {
+              Write-Host ("[WAIT] {0:N0}s until reset exceeds cap; sleeping {1:N0}s, midday fallback will cover today if needed." -f $wait, $cap)
+              $wait = $cap
+            }
+            Write-Host ("[WAIT] Sleeping {0:N0}s until {1:yyyy-MM-dd HH:mm} UTC (site daily reset)..." -f $wait, $target)
+            Start-Sleep -Seconds $wait
+          }
+        }
         for ($i = 1; $i -le 4; $i++) {
           uv run checkin.py
           if ($LASTEXITCODE -eq 0) { exit 0 }
@@ -185,6 +204,7 @@ jobs:
       env:
         PYTHONIOENCODING: utf-8
         ONLY_ACCOUNT: '223711'
+        SCHEDULE_SLOT: ${{ github.event.schedule }}
         ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
         PROVIDERS: ${{ secrets.PROVIDERS }}
         DINGDING_WEBHOOK: ${{ secrets.DINGDING_WEBHOOK }}
@@ -205,6 +225,24 @@ jobs:
         BARK_KEY: ${{ secrets.BARK_KEY }}
         BARK_SERVER: ${{ secrets.BARK_SERVER }}
       run: |
+        # 站点每日签到按 UTC 午夜重置(约北京 8:00)。凌晨槽位的 run 先挂机到 UTC 00:45(重置后)再签，
+        # 实现“北京 8:45 前签完、早上醒来即见”。等待上限 5h45m 防止撞 6h job 硬限；若调度延迟不足
+        # 导致醒来仍在旧 UTC 日，本次会假成功，由 12:00 CST 兜底 run 补签。兜底/手动触发不等待。
+        if ($env:SCHEDULE_SLOT -eq '0 17 * * *' -or $env:SCHEDULE_SLOT -eq '5 17 * * *') {
+          $now = [DateTimeOffset]::UtcNow
+          $target = $now.Date.AddMinutes(45)
+          if ($target -le $now) { $target = $target.AddDays(1) }
+          $wait = [int]($target - $now).TotalSeconds
+          $cap = 5*3600 + 45*60
+          if ($wait -gt 0) {
+            if ($wait -gt $cap) {
+              Write-Host ("[WAIT] {0:N0}s until reset exceeds cap; sleeping {1:N0}s, midday fallback will cover today if needed." -f $wait, $cap)
+              $wait = $cap
+            }
+            Write-Host ("[WAIT] Sleeping {0:N0}s until {1:yyyy-MM-dd HH:mm} UTC (site daily reset)..." -f $wait, $target)
+            Start-Sleep -Seconds $wait
+          }
+        }
         for ($i = 1; $i -le 4; $i++) {
           uv run checkin.py
           if ($LASTEXITCODE -eq 0) { exit 0 }
