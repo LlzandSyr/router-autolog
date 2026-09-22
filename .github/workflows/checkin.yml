@@ -103,7 +103,7 @@ jobs:
         # 实现“北京 8:45 前签完、早上醒来即见”。等待上限 5h45m 防止撞 6h job 硬限；若调度延迟不足
         # 导致醒来仍在旧 UTC 日，本次会假成功，由 12:00 CST 兜底 run 补签。兜底/手动触发不等待。
         if ($env:SCHEDULE_SLOT -eq '0 17 * * *' -or $env:SCHEDULE_SLOT -eq '5 17 * * *') {
-          $now = [DateTimeOffset]::UtcNow
+          $now = [DateTime]::UtcNow
           $target = $now.Date.AddMinutes(45)
           if ($target -le $now) { $target = $target.AddDays(1) }
           $wait = [int]($target - $now).TotalSeconds
@@ -229,7 +229,7 @@ jobs:
         # 实现“北京 8:45 前签完、早上醒来即见”。等待上限 5h45m 防止撞 6h job 硬限；若调度延迟不足
         # 导致醒来仍在旧 UTC 日，本次会假成功，由 12:00 CST 兜底 run 补签。兜底/手动触发不等待。
         if ($env:SCHEDULE_SLOT -eq '0 17 * * *' -or $env:SCHEDULE_SLOT -eq '5 17 * * *') {
-          $now = [DateTimeOffset]::UtcNow
+          $now = [DateTime]::UtcNow
           $target = $now.Date.AddMinutes(45)
           if ($target -le $now) { $target = $target.AddDays(1) }
           $wait = [int]($target - $now).TotalSeconds
